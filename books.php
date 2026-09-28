@@ -1,608 +1,279 @@
 <?php
+require_once __DIR__ . '/includes/auth.php';
 
-$pageTitle = "Books — Smart Book Store";
+$pageTitle = "Book Catalog — DAASTAAN. Literary Archive & Bookstore";
 
-$books = [
+$selectedCategory = trim($_GET['category'] ?? 'all');
+$searchQuery = trim($_GET['search'] ?? '');
+$sortBy = trim($_GET['sort'] ?? 'featured');
 
-    [
-        "id" => 1,
-        "title" => "The Silent Patient",
-        "author" => "Alex Michaelides",
-        "category" => "Thriller",
-        "price" => 499,
-        "rating" => 4.7
-    ],
-
-    [
-        "id" => 2,
-        "title" => "Atomic Habits",
-        "author" => "James Clear",
-        "category" => "Self Development",
-        "price" => 599,
-        "rating" => 4.9
-    ],
-
-    [
-        "id" => 3,
-        "title" => "The Alchemist",
-        "author" => "Paulo Coelho",
-        "category" => "Fiction",
-        "price" => 399,
-        "rating" => 4.8
-    ],
-
-    [
-        "id" => 4,
-        "title" => "Deep Work",
-        "author" => "Cal Newport",
-        "category" => "Productivity",
-        "price" => 549,
-        "rating" => 4.6
-    ],
-
-    [
-        "id" => 5,
-        "title" => "The Psychology of Money",
-        "author" => "Morgan Housel",
-        "category" => "Business",
-        "price" => 499,
-        "rating" => 4.8
-    ],
-
-    [
-        "id" => 6,
-        "title" => "Dune",
-        "author" => "Frank Herbert",
-        "category" => "Science Fiction",
-        "price" => 699,
-        "rating" => 4.9
-    ],
-
-    [
-        "id" => 7,
-        "title" => "1984",
-        "author" => "George Orwell",
-        "category" => "Classics",
-        "price" => 349,
-        "rating" => 4.8
-    ],
-
-    [
-        "id" => 8,
-        "title" => "The Pragmatic Programmer",
-        "author" => "David Thomas",
-        "category" => "Technology",
-        "price" => 799,
-        "rating" => 4.7
-    ]
-
+$sortMap = [
+    'featured' => ['featured' => -1, 'rating' => -1],
+    'rating' => ['rating' => -1],
+    'newest' => ['created_at' => -1],
+    'price_asc' => ['price' => 1],
+    'price_desc' => ['price' => -1],
+    'title' => ['title' => 1]
 ];
+$sortCriteria = $sortMap[$sortBy] ?? ['featured' => -1, 'rating' => -1];
 
+$filter = [];
+if ($selectedCategory !== 'all' && !empty($selectedCategory)) {
+    $filter['category'] = $selectedCategory;
+}
+
+if (!empty($searchQuery)) {
+    $filter['$or'] = [
+        ['title' => new MongoDB\BSON\Regex($searchQuery, 'i')],
+        ['author' => new MongoDB\BSON\Regex($searchQuery, 'i')],
+        ['category' => new MongoDB\BSON\Regex($searchQuery, 'i')]
+    ];
+}
+
+$books = [];
+$categories = [];
+
+try {
+    if ($dbConnected) {
+        $books = $db->books->find($filter, ['sort' => $sortCriteria])->toArray();
+        $categories = $db->books->distinct('category');
+        sort($categories);
+    }
+} catch (Exception $e) {
+    setFlash('error', 'Error fetching catalog: ' . $e->getMessage());
+}
+
+require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/navbar.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-
-    <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title><?= $pageTitle ?></title>
-
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <script>
-
-        tailwind.config = {
-
-            theme: {
-
-                extend: {
-
-                    colors: {
-                        blood: "#ff1744",
-                        void: "#050505"
-                    }
-
-                }
-
-            }
-
-        }
-
-    </script>
-
-    <link
-        rel="preconnect"
-        href="https://fonts.googleapis.com"
-    >
-
-    <link
-        rel="preconnect"
-        href="https://fonts.gstatic.com"
-        crossorigin
-    >
-
-    <link
-        href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap"
-        rel="stylesheet"
-    >
-
-    <style>
-
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            background: #050505;
-            color: #f5f5f5;
-            font-family: "Space Grotesk", sans-serif;
-        }
-
-        .mono {
-            font-family: "DM Mono", monospace;
-        }
-
-        .noise {
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            z-index: 100;
-            opacity: .035;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E");
-        }
-
-        .book-card {
-            background: #0b0b0b;
-            border: 1px solid #242424;
-            transition:
-                transform .5s ease,
-                border-color .5s ease;
-        }
-
-        .book-card:hover {
-            transform: translateY(-10px);
-            border-color: #ff1744;
-        }
-
-        .book-cover {
-            transition:
-                transform .6s ease,
-                filter .6s ease;
-        }
-
-        .book-card:hover .book-cover {
-            transform: scale(1.06) rotate(-2deg);
-            filter: brightness(1.15);
-        }
-
-        .category-btn {
-            border: 1px solid #292929;
-            transition: .3s ease;
-        }
-
-        .category-btn:hover,
-        .category-btn.active {
-            background: #ff1744;
-            border-color: #ff1744;
-            color: black;
-        }
-
-        .search-box {
-            transition: border-color .3s ease;
-        }
-
-        .search-box:focus-within {
-            border-color: #ff1744;
-        }
-
-    </style>
-
-</head>
-
-
-<body>
-
-<div class="noise"></div>
-
-
-<!-- NAVBAR -->
-
-<header class="border-b border-white/10">
-
-    <nav
-        class="max-w-[1500px] mx-auto px-6 md:px-10 h-24 flex items-center justify-between"
-    >
-
-        <a
-            href="index.php"
-            class="text-2xl font-bold tracking-[-0.08em]"
-        >
-            SMART<span class="text-blood">.</span>
-        </a>
-
-
-        <div class="hidden md:flex items-center gap-10 text-sm text-gray-500">
-
-            <a
-                href="index.php"
-                class="hover:text-white transition"
-            >
-                HOME
-            </a>
-
-            <a
-                href="books.php"
-                class="text-white"
-            >
-                BOOKS
-            </a>
-
-            <a
-                href="index.php#categories"
-                class="hover:text-white transition"
-            >
-                CATEGORIES
-            </a>
-
-        </div>
-
-
-        <div class="flex items-center gap-5">
-
-            <a
-                href="cart/cart.php"
-                class="mono text-xs text-gray-500 hover:text-white transition"
-            >
-                CART [0]
-            </a>
-
-            <a
-                href="auth/login.php"
-                class="border border-white/20 px-5 py-2.5 text-xs hover:bg-white hover:text-black transition"
-            >
-                LOGIN
-            </a>
-
-        </div>
-
-    </nav>
-
-</header>
-
-
-<main>
+<main class="py-16 max-w-[1500px] mx-auto px-6 md:px-10">
 
     <!-- PAGE HEADER -->
-
-    <section class="max-w-[1500px] mx-auto px-6 md:px-10 pt-24 pb-16">
-
-        <div class="mono text-[10px] tracking-[0.4em] text-blood mb-6">
-            01 / THE COLLECTION
-        </div>
-
-        <h1 class="text-6xl md:text-9xl font-bold tracking-[-0.08em] leading-[.8]">
-            ALL
-            <span class="text-gray-600">
-                BOOKS.
-            </span>
+    <div class="mb-14">
+        <div class="mono text-[10px] tracking-[0.4em] text-blood mb-3">01 / ARCHIVE & INVENTORY • <?= count($books) ?> TITLES</div>
+        <h1 class="text-5xl md:text-8xl font-bold tracking-[-0.06em] leading-tight">
+            BOOK <span class="text-gray-600">CATALOG.</span>
         </h1>
-
-        <p class="mt-10 max-w-xl text-gray-500 leading-relaxed">
-            Explore stories, ideas and worlds curated for curious minds.
-            Find something worth losing yourself in.
+        <p class="mt-4 text-gray-400 text-sm max-w-2xl leading-relaxed">
+            Explore our curated database of classical Urdu & Hindi poetry collections, philosophical treatises, software craftsmanship, and speculative fiction.
         </p>
+    </div>
 
-    </section>
-
-
-    <!-- SEARCH + FILTER -->
-
-    <section class="max-w-[1500px] mx-auto px-6 md:px-10 pb-16">
-
-        <div class="flex flex-col lg:flex-row gap-5 justify-between">
-
-            <!-- SEARCH -->
-
-            <div
-                class="search-box border border-[#292929] bg-[#0b0b0b] flex items-center px-5 py-4 w-full lg:max-w-xl"
-            >
-
-                <span class="text-gray-600 mr-4">
-                    /
-                </span>
-
-                <input
-                    id="searchInput"
-                    type="text"
-                    placeholder="Search books, authors..."
-                    class="bg-transparent outline-none w-full text-sm text-white placeholder:text-gray-700"
-                >
-
+    <!-- SEARCH & CONTROLS BAR -->
+    <div class="mb-12 space-y-5">
+        
+        <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
+            <!-- Search Input -->
+            <div class="border border-white/15 bg-[#0a0a0a] flex items-center px-4 py-3.5 w-full md:max-w-md focus-within:border-blood focus-within:shadow-[0_0_25px_rgba(255,23,68,0.2)] transition duration-300">
+                <span class="mono text-xs text-blood mr-3 font-bold">/</span>
+                <input id="searchInput" type="text" placeholder="Search title, author, or keywords..."
+                       value="<?= htmlspecialchars($searchQuery) ?>"
+                       class="bg-transparent outline-none w-full text-sm text-white placeholder:text-gray-600">
+                <span id="matchCounter" class="mono text-[10px] text-gray-500 ml-2 whitespace-nowrap">(<?= count($books) ?> BOOKS)</span>
             </div>
 
-
-            <!-- CATEGORIES -->
-
-            <div class="flex gap-2 overflow-x-auto pb-2">
-
-                <button
-                    class="category-btn active px-5 py-3 text-xs whitespace-nowrap"
-                    data-category="all"
-                >
-                    ALL
-                </button>
-
-                <button
-                    class="category-btn px-5 py-3 text-xs whitespace-nowrap"
-                    data-category="Fiction"
-                >
-                    FICTION
-                </button>
-
-                <button
-                    class="category-btn px-5 py-3 text-xs whitespace-nowrap"
-                    data-category="Thriller"
-                >
-                    THRILLER
-                </button>
-
-                <button
-                    class="category-btn px-5 py-3 text-xs whitespace-nowrap"
-                    data-category="Technology"
-                >
-                    TECHNOLOGY
-                </button>
-
-                <button
-                    class="category-btn px-5 py-3 text-xs whitespace-nowrap"
-                    data-category="Business"
-                >
-                    BUSINESS
-                </button>
-
+            <!-- Sort By Select -->
+            <div class="flex items-center gap-2">
+                <span class="mono text-[10px] text-gray-500 uppercase tracking-widest whitespace-nowrap">SORT BY:</span>
+                <select id="sortSelect" class="bg-[#0a0a0a] border border-white/15 text-xs text-gray-300 px-4 py-3 mono outline-none focus:border-blood transition cursor-pointer">
+                    <option value="featured" <?= $sortBy === 'featured' ? 'selected' : '' ?>>Curated & Featured</option>
+                    <option value="rating" <?= $sortBy === 'rating' ? 'selected' : '' ?>>Rating: Highest First</option>
+                    <option value="price_asc" <?= $sortBy === 'price_asc' ? 'selected' : '' ?>>Price: Low to High</option>
+                    <option value="price_desc" <?= $sortBy === 'price_desc' ? 'selected' : '' ?>>Price: High to Low</option>
+                    <option value="title" <?= $sortBy === 'title' ? 'selected' : '' ?>>Title: Alphabetical</option>
+                </select>
             </div>
-
         </div>
 
-    </section>
-
-
-    <!-- BOOK GRID -->
-
-    <section class="max-w-[1500px] mx-auto px-6 md:px-10 pb-32">
-
-        <div
-            id="bookGrid"
-            class="grid sm:grid-cols-2 lg:grid-cols-4 gap-5"
-        >
-
-            <?php foreach ($books as $book): ?>
-
-                <article
-                    class="book-card book-item"
-                    data-category="<?= $book["category"] ?>"
-                    data-search="<?= strtolower($book["title"] . " " . $book["author"]) ?>"
-                >
-
-                    <!-- COVER -->
-
-                    <div class="h-[430px] flex items-center justify-center relative">
-
-                        <span class="absolute top-5 left-5 mono text-[9px] text-gray-700">
-                            #<?= str_pad($book["id"], 2, "0", STR_PAD_LEFT) ?>
-                        </span>
-
-
-                        <div
-                            class="book-cover w-[190px] h-[285px] bg-gradient-to-br from-[#260812] to-black border border-white/10 p-6 flex flex-col justify-between shadow-2xl"
-                        >
-
-                            <span class="mono text-[8px] text-blood tracking-widest">
-                                SMART EDITION
-                            </span>
-
-
-                            <h2 class="text-2xl font-bold leading-none">
-                                <?= $book["title"] ?>
-                            </h2>
-
-
-                            <span class="text-[9px] text-gray-500">
-                                <?= $book["author"] ?>
-                            </span>
-
-                        </div>
-
-                    </div>
-
-
-                    <!-- INFO -->
-
-                    <div class="p-6 border-t border-white/5">
-
-                        <div class="flex justify-between items-center">
-
-                            <span class="mono text-[9px] text-blood tracking-widest">
-                                <?= strtoupper($book["category"]) ?>
-                            </span>
-
-                            <span class="text-xs text-yellow-500">
-                                ★ <?= $book["rating"] ?>
-                            </span>
-
-                        </div>
-
-
-                        <h2 class="mt-3 font-semibold text-lg">
-                            <?= $book["title"] ?>
-                        </h2>
-
-
-                        <p class="text-xs text-gray-600 mt-1">
-                            <?= $book["author"] ?>
-                        </p>
-
-
-                        <div class="mt-6 flex items-center justify-between">
-
-                            <span class="text-lg font-bold">
-                                ₹<?= $book["price"] ?>
-                            </span>
-
-
-                            <a
-                                href="book-details.php?id=<?= $book["id"] ?>"
-                                class="text-xs border border-white/10 px-4 py-2 hover:bg-white hover:text-black transition"
-                            >
-                                VIEW →
-                            </a>
-
-                        </div>
-
-                    </div>
-
-                </article>
-
+        <!-- Category Pill Buttons -->
+        <div class="flex gap-2 overflow-x-auto pb-2 scrollbar-thin items-center">
+            <button class="category-btn category-pill mono text-xs px-4 py-2.5 border <?= $selectedCategory === 'all' ? 'border-blood bg-blood text-black font-bold' : 'border-white/10 hover:border-white/40 text-gray-400' ?> transition whitespace-nowrap"
+                    data-category="all">
+                ALL (<?= count($books) ?>)
+            </button>
+            <?php foreach ($categories as $cat): ?>
+                <button class="category-btn category-pill mono text-xs px-4 py-2.5 border <?= strcasecmp($selectedCategory, $cat) === 0 ? 'border-blood bg-blood text-black font-bold' : 'border-white/10 hover:border-white/40 text-gray-400' ?> transition whitespace-nowrap"
+                        data-category="<?= htmlspecialchars($cat) ?>">
+                    <?= strtoupper(htmlspecialchars($cat)) ?>
+                </button>
             <?php endforeach; ?>
-
-        </div>
-
-
-        <!-- NO RESULTS -->
-
-        <div
-            id="noResults"
-            class="hidden py-32 text-center"
-        >
-
-            <p class="mono text-blood text-xs tracking-widest">
-                NOTHING FOUND
-            </p>
-
-            <h2 class="text-4xl font-bold mt-4">
-                Try another search.
-            </h2>
-
-        </div>
-
-    </section>
-
-</main>
-
-
-<!-- FOOTER -->
-
-<footer class="border-t border-white/10">
-
-    <div class="max-w-[1500px] mx-auto px-6 md:px-10 py-12 flex flex-col md:flex-row justify-between gap-5">
-
-        <div class="text-xl font-bold">
-            SMART<span class="text-blood">.</span>
-        </div>
-
-        <div class="mono text-[9px] text-gray-700">
-            © <?= date("Y") ?> SMART BOOK STORE
+            <a href="<?= baseUrl('genres.php') ?>" class="mono text-xs px-4 py-2.5 border border-gold/40 text-gold hover:bg-gold hover:text-black transition whitespace-nowrap">
+                TAXONOMY GUIDE ↗
+            </a>
         </div>
 
     </div>
 
-</footer>
+    <!-- BOOK GRID -->
+    <div id="bookGrid" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <?php foreach ($books as $index => $book): ?>
+            <?php 
+                $bookId = (string)$book['_id'];
+                $stock = (int)($book['stock'] ?? 0);
+                $coverBg = $book['cover_bg'] ?? 'from-[#241018] to-[#090909]';
+            ?>
+            <article class="book-card book-item reveal p-6 flex flex-col justify-between group"
+                     data-category="<?= htmlspecialchars($book['category'] ?? '') ?>"
+                     data-price="<?= (float)($book['price'] ?? 0) ?>"
+                     data-rating="<?= (float)($book['rating'] ?? 5.0) ?>"
+                     data-title="<?= strtolower(htmlspecialchars($book['title'] ?? '')) ?>"
+                     data-search="<?= strtolower(htmlspecialchars($book['title'] . ' ' . $book['author'] . ' ' . ($book['category'] ?? ''))) ?>">
 
+                <!-- Visual Cover -->
+                <div class="h-[380px] flex items-center justify-center relative">
+                    <span class="absolute top-2 left-2 mono text-[9px] text-gray-600">
+                        #<?= str_pad((string)($index + 1), 2, "0", STR_PAD_LEFT) ?>
+                    </span>
+
+                    <div class="book-cover w-[190px] h-[280px] bg-gradient-to-br <?= htmlspecialchars($coverBg) ?> border border-white/10 p-5 flex flex-col justify-between shadow-2xl">
+                        <span class="mono text-[8px] text-blood tracking-widest uppercase">
+                            <?= htmlspecialchars($book['category'] ?? 'DAASTAAN EDITION') ?>
+                        </span>
+                        <div>
+                            <h2 class="text-xl font-bold leading-tight group-hover:text-white transition">
+                                <?= htmlspecialchars($book['title']) ?>
+                            </h2>
+                        </div>
+                        <span class="text-[9px] text-gray-500">
+                            <?= htmlspecialchars($book['author']) ?>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Book Metadata -->
+                <div class="pt-6 border-t border-white/10 flex-1 flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center text-[10px] mono">
+                            <span class="text-blood tracking-wider uppercase font-semibold">
+                                <?= htmlspecialchars($book['category'] ?? 'GENERAL') ?>
+                            </span>
+                            <span class="text-yellow-500 font-bold">
+                                ★ <?= htmlspecialchars((string)($book['rating'] ?? 5.0)) ?>
+                            </span>
+                        </div>
+
+                        <h3 class="mt-2 text-lg font-bold leading-tight line-clamp-1 group-hover:text-blood transition">
+                            <?= htmlspecialchars($book['title']) ?>
+                        </h3>
+                        <p class="text-xs text-gray-500 mt-1"><?= htmlspecialchars($book['author']) ?></p>
+                    </div>
+
+                    <div class="mt-6 pt-4 border-t border-white/5 flex items-center justify-between">
+                        <div>
+                            <span class="text-lg font-bold font-mono">₹<?= htmlspecialchars((string)$book['price']) ?></span>
+                            <div class="mono text-[9px] mt-0.5">
+                                <?php if ($stock > 5): ?>
+                                    <span class="text-emerald-500">● IN STOCK (<?= $stock ?>)</span>
+                                <?php elseif ($stock > 0): ?>
+                                    <span class="text-yellow-400 animate-pulse font-semibold">▲ LOW STOCK (<?= $stock ?>)</span>
+                                <?php else: ?>
+                                    <span class="text-blood font-semibold">✕ SOLD OUT</span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <a href="<?= baseUrl('book-details.php?id=' . $bookId) ?>"
+                           class="border border-white/15 px-3 py-1.5 text-xs mono hover:bg-white hover:text-black transition">
+                            DETAILS →
+                        </a>
+                    </div>
+                </div>
+
+            </article>
+        <?php endforeach; ?>
+    </div>
+
+    <!-- EMPTY SEARCH RESULTS FALLBACK -->
+    <div id="noResults" class="<?= empty($books) ? '' : 'hidden' ?> py-32 text-center">
+        <p class="mono text-blood text-xs tracking-widest">QUERY RETURNED ZERO MATCHES</p>
+        <h2 class="text-4xl font-bold mt-4">No books match your criteria.</h2>
+        <a href="<?= baseUrl('books.php') ?>" class="inline-block mt-6 border border-white/20 px-6 py-2.5 text-xs mono hover:border-blood">
+            RESET ALL FILTERS
+        </a>
+    </div>
+
+</main>
 
 <script>
-
     const searchInput = document.getElementById("searchInput");
-
-    const books = document.querySelectorAll(".book-item");
-
+    const bookGrid = document.getElementById("bookGrid");
     const noResults = document.getElementById("noResults");
-
     const categoryButtons = document.querySelectorAll(".category-btn");
+    const sortSelect = document.getElementById("sortSelect");
 
-    let selectedCategory = "all";
+    let currentCategory = "<?= $selectedCategory ?>";
 
-
-    function filterBooks() {
-
-        const search = searchInput.value.toLowerCase().trim();
-
-        let visibleBooks = 0;
-
-
-        books.forEach(book => {
-
-            const category = book.dataset.category;
-
-            const searchableText = book.dataset.search;
-
-
-            const categoryMatch =
-                selectedCategory === "all" ||
-                category === selectedCategory;
-
-
-            const searchMatch =
-                searchableText.includes(search);
-
-
-            if (categoryMatch && searchMatch) {
-
-                book.classList.remove("hidden");
-
-                visibleBooks++;
-
-            } else {
-
-                book.classList.add("hidden");
-
-            }
-
-        });
-
-
-        if (visibleBooks === 0) {
-
-            noResults.classList.remove("hidden");
-
-        } else {
-
-            noResults.classList.add("hidden");
-
-        }
-
+    function getBookItems() {
+        return Array.from(document.querySelectorAll(".book-item"));
     }
 
+    function applyFilterAndSort() {
+        const query = searchInput.value.toLowerCase().trim();
+        const sortVal = sortSelect ? sortSelect.value : "featured";
+        let items = getBookItems();
+        let matches = 0;
 
-    searchInput.addEventListener("input", filterBooks);
+        items.forEach(item => {
+            const cat = item.dataset.category.toLowerCase();
+            const text = item.dataset.search;
 
+            const categoryMatch = (currentCategory === "all" || cat === currentCategory.toLowerCase());
+            const searchMatch = !query || text.includes(query);
 
-    categoryButtons.forEach(button => {
-
-        button.addEventListener("click", () => {
-
-            categoryButtons.forEach(btn => {
-                btn.classList.remove("active");
-            });
-
-            button.classList.add("active");
-
-            selectedCategory = button.dataset.category;
-
-            filterBooks();
-
+            if (categoryMatch && searchMatch) {
+                item.classList.remove("hidden");
+                matches++;
+            } else {
+                item.classList.add("hidden");
+            }
         });
 
-    });
+        // Instant In-Place Sort
+        if (sortVal !== "featured") {
+            items.sort((a, b) => {
+                if (sortVal === "price_asc") {
+                    return parseFloat(a.dataset.price) - parseFloat(b.dataset.price);
+                } else if (sortVal === "price_desc") {
+                    return parseFloat(b.dataset.price) - parseFloat(a.dataset.price);
+                } else if (sortVal === "rating") {
+                    return parseFloat(b.dataset.rating) - parseFloat(a.dataset.rating);
+                } else if (sortVal === "title") {
+                    return a.dataset.title.localeCompare(b.dataset.title);
+                }
+                return 0;
+            });
+            items.forEach(item => bookGrid.appendChild(item));
+        }
 
+        if (matches === 0) {
+            noResults.classList.remove("hidden");
+        } else {
+            noResults.classList.add("hidden");
+        }
+
+        const matchCounter = document.getElementById("matchCounter");
+        if (matchCounter) {
+            matchCounter.textContent = `(${matches} ${matches === 1 ? 'BOOK' : 'BOOKS'})`;
+        }
+    }
+
+    searchInput.addEventListener("input", applyFilterAndSort);
+    if (sortSelect) {
+        sortSelect.addEventListener("change", applyFilterAndSort);
+    }
+
+    categoryButtons.forEach(btn => {
+        btn.addEventListener("click", () => {
+            categoryButtons.forEach(b => {
+                b.className = "category-btn mono text-xs px-4 py-2.5 border border-white/10 hover:border-white/40 text-gray-400 transition whitespace-nowrap";
+            });
+            btn.className = "category-btn mono text-xs px-4 py-2.5 border border-blood bg-blood text-black font-bold transition whitespace-nowrap";
+
+            currentCategory = btn.dataset.category;
+            applyFilterAndSort();
+        });
+    });
 </script>
 
-</body>
-</html>
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
