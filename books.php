@@ -258,10 +258,13 @@ require_once __DIR__ . '/includes/navbar.php';
         }
     }
 
-    searchInput.addEventListener("input", applyFilterAndSort);
+    if (searchInput) {
+        searchInput.addEventListener("input", applyFilterAndSort);
+    }
     if (sortSelect) {
         sortSelect.addEventListener("change", applyFilterAndSort);
     }
+
 
     categoryButtons.forEach(btn => {
         btn.addEventListener("click", () => {
